@@ -1,0 +1,8 @@
+pydantic-settings
+openai
+python-multipart
+langgraph
+langchain_core
+langchain_openai
+langsmith
+langchain_community
