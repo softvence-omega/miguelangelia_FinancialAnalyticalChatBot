@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.file_explore_endpoint import router as explore_router
 from app.routes.summary_and_report_generator_endpoint import router as summary_report_router
+from app.routes.bot_endpoint import router as bot_router
+from app.routes.create_chatsession_endpoint import router as session_router
 
 app = FastAPI(title="Financial Analyst AI API")
 
@@ -16,8 +18,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(explore_router)
-app.include_router(summary_report_router)
+app.include_router(explore_router, prefix='/ai')
+app.include_router(summary_report_router, prefix='/ai')
+app.include_router(bot_router, prefix='/ai')
+app.include_router(session_router, prefix='/ai')
 
 @app.get("/")
 async def base_route():

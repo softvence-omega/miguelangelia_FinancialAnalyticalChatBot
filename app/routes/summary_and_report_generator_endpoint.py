@@ -20,7 +20,10 @@ async def summary_and_report_generator(request: DataSummaryRequest):
     """
     try:
         # Call async OpenAI function
-        summary = await call_openai(request.data_summary)
+        summary = await call_openai(
+            system_prompt="You are a data analyst.",
+            user_prompt=f"Analyze this data and summarize insights:\n{request.data_summary}"
+        )
         
         # Return as JSON
         return {"summary": summary}
