@@ -6,3 +6,6 @@ langchain_core
 langchain_openai
 langsmith
 langchain_community
+uvicorn
+fastapi
+fastapi.middleware.cors
