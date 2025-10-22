@@ -12,7 +12,8 @@ async def explore_df_endpoint(file: UploadFile = File(...)):
         response_json = await explore_df(file)
 
         # Convert JSON string to dict before returning
-        return response_json
+        print(response_json)
+        return json.loads(response_json)
 
     except ValueError as ve:
         # Specific error for invalid file format or bad data

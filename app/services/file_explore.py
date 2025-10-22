@@ -4,7 +4,7 @@ import numpy as np
 import os
 from fastapi import UploadFile, HTTPException
 
-def explore_df(file: UploadFile) -> str:
+async def explore_df(file: UploadFile) -> str:
     ext = os.path.splitext(file.filename)[1].lower()
     
     try:
