@@ -4,6 +4,7 @@ from app.routes.file_explore_endpoint import router as explore_router
 from app.routes.summary_and_report_generator_endpoint import router as summary_report_router
 from app.routes.bot_endpoint import router as bot_router
 from app.routes.create_chatsession_endpoint import router as session_router
+from app.routes.summery_endpoint import router as summery_router
 
 app = FastAPI(title="Financial Analyst AI API")
 
@@ -22,7 +23,7 @@ app.include_router(explore_router, prefix='/ai')
 app.include_router(summary_report_router, prefix='/ai')
 app.include_router(bot_router, prefix='/ai')
 app.include_router(session_router, prefix='/ai')
-
+app.include_router(summery_router, prefix='/ai')
 @app.get("/")
 async def base_route():
     return {"message": "Welcome to the Financial Anantyc AI API"}

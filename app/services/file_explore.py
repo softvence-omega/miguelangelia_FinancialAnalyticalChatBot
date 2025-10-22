@@ -26,10 +26,10 @@ async def read_uploaded_file(file: UploadFile) -> pd.DataFrame:
     def _read_file():
         if filename.endswith(".csv"):
             return pd.read_csv(io.BytesIO(contents))
-        elif filename.endswith(".xlsx"):
+        elif filename.endswith(".xlsx", ".xls"):
             return pd.read_excel(io.BytesIO(contents))
         else:
-            raise ValueError("File must be .csv or .xlsx")
+            raise ValueError("File must be .csv, , .xls or .xlsx")
     
     return await asyncio.to_thread(_read_file)
 
