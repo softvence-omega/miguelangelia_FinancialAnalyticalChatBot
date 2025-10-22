@@ -1,25 +1,33 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from app.services.file_explore import explore_df
-import tempfile
-import json
-import os
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import JSONResponse
+import asyncio
+from app.services.file_explore import read_uploaded_file, generate_statistics, get_llm_report
+from app.schemas.file_exploar_shcema import DataAnalysisResponse, ErrorResponse, Shape  
 
 router = APIRouter()
 
 @router.post("/file-explore")
-async def explore_df_endpoint(file: UploadFile = File(...)):
+async def generate_report(file: UploadFile = File(...)):
     try:
-        response_json = await explore_df(file)
-
-        # Convert JSON string to dict before returning
-        print(response_json)
-        return json.loads(response_json)
-
-    except ValueError as ve:
-        # Specific error for invalid file format or bad data
-        raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException as he:
-        raise he
+        # In the route, wrap the preview generation too:
+        df = await read_uploaded_file(file)
+        preview = await asyncio.to_thread(lambda: df.head(20).to_string(index=False))
+        llm_report = await get_llm_report(preview, list(df.columns))
+        shape = Shape(rows=int(df.shape[0]), columns=int(df.shape[1]))
+        statistics = await asyncio.to_thread(generate_statistics, df)
+        response = DataAnalysisResponse(
+            column_descriptions=llm_report.column_descriptions,
+            shape=shape,
+            statistics=statistics
+        )
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                message=str(e),
+                error_type=type(e).__name__
+            ).dict()
+        )
+
    
