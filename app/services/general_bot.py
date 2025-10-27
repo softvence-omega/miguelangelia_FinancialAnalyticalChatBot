@@ -9,6 +9,8 @@ from app.core.config import history_collection
 import pickle
 import uuid
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 # Initialize MongoSaver
 checkpointer = MongoSaver(history_collection)

@@ -1,7 +1,7 @@
 from openai import OpenAI
-from app.core.config import setting
+from app.core.config import settings
 
-client = OpenAI(api_key=setting.openai_api_key)
+client = OpenAI(api_key=settings.openai_api_key)
 
 def generate_thread_title(first_user_message: str) -> str:
     prompt = f"""

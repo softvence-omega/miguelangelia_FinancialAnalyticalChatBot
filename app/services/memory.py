@@ -141,50 +141,68 @@ class MongoSaver(BaseCheckpointSaver):
     def get_tuple(self, config: dict[str, Any]) -> Optional[CheckpointTuple]:
         """
         Retrieve a checkpoint from MongoDB.
-        
+
         Args:
             config: Configuration dict with thread_id and checkpoint_ns
-            
+
         Returns:
             CheckpointTuple if found, None otherwise
         """
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"].get("checkpoint_id")
-        
+
         # Build query
         query = {
             "thread_id": thread_id,
             "checkpoint_ns": checkpoint_ns,
         }
-        
+
         if checkpoint_id:
             query["checkpoint_id"] = checkpoint_id
-        
+
         # Find the most recent checkpoint
         document = self.collection.find_one(
             query,
             sort=[("created_at", -1)]
         )
-        
+
         if not document:
             return None
-        
-        # Deserialize checkpoint and metadata
-        checkpoint = pickle.loads(document["checkpoint"])
-        metadata = pickle.loads(document["metadata"])
-        
-        # Create checkpoint config
+
+        # ✅ Safely handle missing fields
+        if "checkpoint" not in document:
+            print(f"⚠️ Missing 'checkpoint' in document with _id={document.get('_id')}")
+            return None
+
+        if "metadata" not in document:
+            print(f"⚠️ Missing 'metadata' in document with _id={document.get('_id')}")
+            return None
+
+        # Deserialize safely
+        try:
+            checkpoint = pickle.loads(document["checkpoint"])
+        except Exception as e:
+            print(f"❌ Failed to unpickle 'checkpoint' for document {document.get('_id')}: {e}")
+            return None
+
+        try:
+            metadata = pickle.loads(document["metadata"])
+        except Exception as e:
+            print(f"❌ Failed to unpickle 'metadata' for document {document.get('_id')}: {e}")
+            metadata = {}
+
+        # Build checkpoint config
         checkpoint_config = {
             "configurable": {
                 "thread_id": thread_id,
                 "checkpoint_ns": checkpoint_ns,
-                "checkpoint_id": document["checkpoint_id"],
+                "checkpoint_id": document.get("checkpoint_id"),
             }
         }
-        
-        # Create parent config (for traversing checkpoint history)
-        parent_checkpoint_id = checkpoint.get("parent_checkpoint_id")
+
+        # Handle parent checkpoint
+        parent_checkpoint_id = checkpoint.get("parent_checkpoint_id") if checkpoint else None
         parent_config = None
         if parent_checkpoint_id:
             parent_config = {
@@ -194,13 +212,14 @@ class MongoSaver(BaseCheckpointSaver):
                     "checkpoint_id": parent_checkpoint_id,
                 }
             }
-        
+
         return CheckpointTuple(
             config=checkpoint_config,
             checkpoint=checkpoint,
             metadata=metadata,
             parent_config=parent_config,
         )
+
     
     def list(
         self,
