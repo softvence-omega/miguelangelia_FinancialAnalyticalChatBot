@@ -11,3 +11,4 @@ langchain-openai
 pydantic
 scikit-learn
 python-multipart
+pymongo
