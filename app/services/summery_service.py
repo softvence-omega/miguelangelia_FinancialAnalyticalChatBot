@@ -5,12 +5,10 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 import pandas as pd
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
 import asyncio
+from app.core.config import settings
 
-
-load_dotenv()
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 app = FastAPI(title="Dataset Analyzer API")
 
