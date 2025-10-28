@@ -6,6 +6,7 @@ from typing import TypedDict, Annotated
 from app.services.memory import MongoSaver
 from app.services.title_generator import generate_thread_title
 from app.core.config import history_collection
+from app.core.config import settings
 import pickle
 import uuid
 from datetime import datetime
@@ -24,7 +25,7 @@ class ChatState(TypedDict):
 # -----------------------------
 # 2️⃣ initialize LLM (chat-based model)
 # -----------------------------
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = ChatOpenAI(model="gpt-4o-mini",api_key=settings.openai_api_key)
 
 # -----------------------------
 # 3️⃣ define chat node
