@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import UploadFile
 import uuid
-
+from app.core.config import settings
 load_dotenv()
 
 # -----------------------------
@@ -24,7 +24,7 @@ class ChatState(TypedDict):
 # -----------------------------
 # Initialize LLM
 # -----------------------------
-llm = ChatOpenAI(model_name="gpt-4")
+llm = ChatOpenAI(model_name="gpt-4", api_key= settings.openai_api_key)
 
 # Store active threads and their states
 active_threads: dict = {}
@@ -97,19 +97,19 @@ chatbot = create_chatbot()
 # -----------------------------
 # Create a new thread
 # -----------------------------
-def create_thread() -> str:
+def create_thread(user_id: str, file_summary: str) -> str:
     """Creates a new conversation thread and returns thread_id"""
-    thread_id = str(uuid.uuid4())
-    active_threads[thread_id] = create_initial_state(thread_id)
+    thread_id = user_id + "_" + str(uuid.uuid4())
+    active_threads[thread_id] = create_initial_state(thread_id, file_summary)
     return thread_id
 
 # -----------------------------
 # Initialize state with thread_id
 # -----------------------------
-def create_initial_state(thread_id: str):
+def create_initial_state(thread_id: str, file_summary: str):
     return {
         'message': [HumanMessage(content='Hello!')],
-        'file_summary': None,
+        'file_summary': file_summary,
         'thread_id': thread_id
     }
 
@@ -117,6 +117,7 @@ def create_initial_state(thread_id: str):
 # -----------------------------
 def get_thread_state(thread_id: str) -> Optional[dict]:
     """Retrieve state for a specific thread"""
+    print("active_threads------------\n", active_threads)
     return active_threads.get(thread_id)
 
 # Delete thread
@@ -147,7 +148,8 @@ def process_user_input(thread_id: str, user_input: str):
     state = get_thread_state(thread_id)
     # print("state------------", state)
     if not state:
-        return None, f"Thread {thread_id} not found"
+        return None, f"Thread {thread_id} not found" 
+    
 
     state['message'].append(HumanMessage(content=user_input))
 
@@ -155,9 +157,9 @@ def process_user_input(thread_id: str, user_input: str):
     if state.get("file_summary"):
         context_prompt = f"""
         You are a financial data analyst.
-        Use the following dataset summary to answer the question.
+        Use the following information to answer the question.
 
-        Dataset Summary:
+        Information:
         {state['file_summary']}
 
         Question:
