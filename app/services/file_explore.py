@@ -7,13 +7,13 @@ import asyncio
 from fastapi import UploadFile
 from typing import List, Dict, Any
 from openai import AsyncOpenAI
+from app.core.config import settings
 from dotenv import load_dotenv
 from app.schemas.file_exploar_shcema import (
     ColumnStatistics,
     LLMReport
 )
-load_dotenv()
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 
 

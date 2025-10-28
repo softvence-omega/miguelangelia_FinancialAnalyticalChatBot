@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import UploadFile
 import uuid
-
+from app.core.config import settings
 load_dotenv()
 
 # -----------------------------
@@ -24,7 +24,7 @@ class ChatState(TypedDict):
 # -----------------------------
 # Initialize LLM
 # -----------------------------
-llm = ChatOpenAI(model_name="gpt-4")
+llm = ChatOpenAI(model_name="gpt-4", api_key= settings.openai_api_key)
 
 # Store active threads and their states
 active_threads: dict = {}
