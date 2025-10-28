@@ -1,36 +1,33 @@
-# main.py
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
-import pandas as pd
 import io
-import os
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
-import asyncio
 import json
+import asyncio
+import pandas as pd
+import httpx
+from fastapi import FastAPI, Query, APIRouter
+from fastapi.responses import JSONResponse
+from openai import AsyncOpenAI
+from app.core.config import settings  # Make sure this is correct
 
-load_dotenv()
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI client
+client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+# Initialize FastAPI app
 app = FastAPI(title="Dataset Analyzer API")
 
-
+# --------------------------
+# Async utility functions
+# --------------------------
 async def read_csv_async(content: bytes) -> pd.DataFrame:
     return await asyncio.to_thread(pd.read_csv, io.BytesIO(content))
-
 
 async def read_excel_async(content: bytes) -> pd.DataFrame:
     return await asyncio.to_thread(pd.read_excel, io.BytesIO(content))
 
-
 async def summarize_dataset(df: pd.DataFrame) -> str:
     """Send dataset summary request to OpenAI LLM."""
-    # Offload all pandas operations together
-    df_clean = await asyncio.to_thread(
-        lambda: df.fillna("").head(100).to_dict(orient="records")
-    )
+    # Clean and limit dataset
+    df_clean = await asyncio.to_thread(lambda: df.fillna("").head(100).to_dict(orient="records"))
     
-    # This is fast enough to stay synchronous
     prompt = (
         f"Analyze this dataset and provide a summary in 6-10 sentences. "
         f"Include insights, patterns, and potential issues. Do not exceed 10 sentences:\n"
@@ -44,15 +41,27 @@ async def summarize_dataset(df: pd.DataFrame) -> str:
     )
     return response.choices[0].message.content
 
+# --------------------------
+# API Router
+# --------------------------
+router = APIRouter()
 
-@app.post("/summary")
-async def analyze_file(file: UploadFile = File(...)):
+@router.post("/summary")
+async def analyze_file_from_url(file_url: str = Query(..., description="Cloudinary file URL")):
     try:
-        content = await file.read()
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.get(file_url)
+            if resp.status_code != 200:
+                return JSONResponse(
+                    {"status": "error", "message": f"Failed to fetch file: HTTP {resp.status_code}"},
+                    status_code=resp.status_code
+                )
+            content = resp.content
 
-        if file.filename.endswith(".csv"):
+        # Determine file type from URL
+        if file_url.endswith(".csv"):
             df = await read_csv_async(content)
-        elif file.filename.endswith((".xlsx", ".xls")):
+        elif file_url.endswith((".xlsx", ".xls")):
             df = await read_excel_async(content)
         else:
             return JSONResponse({"status": "error", "message": "Unsupported file type"}, status_code=400)
@@ -62,3 +71,6 @@ async def analyze_file(file: UploadFile = File(...)):
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+# Include router in the app
+app.include_router(router)

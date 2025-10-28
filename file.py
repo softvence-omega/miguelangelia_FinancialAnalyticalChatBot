@@ -1,15 +1,17 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import pandas as pd
-import numpy as np
 import io
-import os
 import json
 import asyncio
+from typing import List, Dict, Any, Optional
+
+import pandas as pd
+import numpy as np
+import aiohttp
+from fastapi import FastAPI, UploadFile, File, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -56,7 +58,6 @@ class LLMReport(BaseModel):
     column_descriptions: List[ColumnDescription]
 
 # ---------- Helper: Read uploaded file ----------
-# Wrap file reading in thread pool
 async def read_uploaded_file(file: UploadFile) -> pd.DataFrame:
     contents = await file.read()
     filename = file.filename.lower()
@@ -70,8 +71,6 @@ async def read_uploaded_file(file: UploadFile) -> pd.DataFrame:
             raise ValueError("File must be .csv or .xlsx")
     
     return await asyncio.to_thread(_read_file)
-
-
 
 # ---------- Helper: Generate statistics ----------
 def generate_statistics(df: pd.DataFrame) -> Dict[str, ColumnStatistics]:
@@ -108,23 +107,6 @@ def generate_statistics(df: pd.DataFrame) -> Dict[str, ColumnStatistics]:
         stats[column] = ColumnStatistics(**col_data)
     return stats
 
-# ---------- Helper: Generate sample data ----------
-def generate_sample_data(df: pd.DataFrame, num_samples: int = 3) -> List[Dict[str, Any]]:
-    sample_df = df.head(num_samples)
-    samples = []
-    for _, row in sample_df.iterrows():
-        row_dict = {}
-        for col in df.columns:
-            value = row[col]
-            if pd.isna(value):
-                row_dict[col] = None
-            elif isinstance(value, (np.integer, np.floating)):
-                row_dict[col] = float(value) if isinstance(value, np.floating) else int(value)
-            else:
-                row_dict[col] = value
-        samples.append(row_dict)
-    return samples
-
 # ---------- Helper: Generate report via LLM ----------
 async def get_llm_report(data_preview: str, columns: List[str]) -> LLMReport:
     prompt = f"""
@@ -146,7 +128,7 @@ EXPECTED OUTPUT FORMAT (STRICTLY JSON, NO TEXT OUTSIDE JSON):
 }}
 
 STRICT RULES:
-1. Return ONLY **valid JSON**. No markdown, no comments, no extra text.
+1. Return ONLY valid JSON. No markdown, no comments, no extra text.
 2. Provide ONE description for EVERY column in the dataset.
 3. Each description must:
    - Be clear, business-relevant, and 5–15 words.
@@ -164,22 +146,56 @@ STRICT RULES:
     json_response = json.loads(response.choices[0].message.content)
     return LLMReport(**json_response)
 
-# ---------- Route: Structured Report ----------
-@app.post("/report", response_model=DataAnalysisResponse)
-async def generate_report(file: UploadFile = File(...)):
+# ---------- Route: File upload ----------
+@app.post("/report-file", response_model=DataAnalysisResponse)
+async def generate_report_file(file: UploadFile = File(...)):
     try:
-        # In the route, wrap the preview generation too:
         df = await read_uploaded_file(file)
         preview = await asyncio.to_thread(lambda: df.head(20).to_string(index=False))
         llm_report = await get_llm_report(preview, list(df.columns))
         shape = Shape(rows=int(df.shape[0]), columns=int(df.shape[1]))
         statistics = await asyncio.to_thread(generate_statistics, df)
-        response = DataAnalysisResponse(
+        return DataAnalysisResponse(
             column_descriptions=llm_report.column_descriptions,
             shape=shape,
             statistics=statistics
         )
-        return response
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                message=str(e),
+                error_type=type(e).__name__
+            ).dict()
+        )
+
+# ---------- Route: Cloudinary / URL ----------
+@app.post("/report-url", response_model=DataAnalysisResponse)
+async def generate_report_url(file_url: str = Query(..., description="Cloudinary file URL")):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(file_url) as resp:
+                if resp.status != 200:
+                    raise ValueError(f"Failed to download file: status {resp.status}")
+                content = await resp.read()
+
+        if file_url.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(content))
+        elif file_url.lower().endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(content))
+        else:
+            raise ValueError("File must be .csv or .xlsx")
+
+        preview = df.head(20).to_string(index=False)
+        llm_report = await get_llm_report(preview, list(df.columns))
+        shape = Shape(rows=int(df.shape[0]), columns=int(df.shape[1]))
+        statistics = await asyncio.to_thread(generate_statistics, df)
+
+        return DataAnalysisResponse(
+            column_descriptions=llm_report.column_descriptions,
+            shape=shape,
+            statistics=statistics
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,

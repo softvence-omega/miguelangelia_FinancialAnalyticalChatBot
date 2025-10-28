@@ -12,3 +12,4 @@ pydantic
 scikit-learn
 python-multipart
 pymongo
+matplotlib

@@ -13,22 +13,20 @@ client = AsyncOpenAI(api_key=settings.openai_api_key)
 app = FastAPI(title="Dataset Analyzer API")
 
 
+# --------------------------
+# Async utility functions
+# --------------------------
 async def read_csv_async(content: bytes) -> pd.DataFrame:
     return await asyncio.to_thread(pd.read_csv, io.BytesIO(content))
-
 
 async def read_excel_async(content: bytes) -> pd.DataFrame:
     return await asyncio.to_thread(pd.read_excel, io.BytesIO(content))
 
-
 async def summarize_dataset(df: pd.DataFrame) -> str:
     """Send dataset summary request to OpenAI LLM."""
-    # Offload all pandas operations together
-    df_clean = await asyncio.to_thread(
-        lambda: df.fillna("").head(100).to_dict(orient="records")
-    )
+    # Clean and limit dataset
+    df_clean = await asyncio.to_thread(lambda: df.fillna("").head(100).to_dict(orient="records"))
     
-    # This is fast enough to stay synchronous
     prompt = (
         f"Analyze this dataset and provide a summary in 6-10 sentences. "
         f"Include insights, patterns, and potential issues. Do not exceed 10 sentences:\n"
