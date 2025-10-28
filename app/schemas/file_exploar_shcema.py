@@ -12,6 +12,10 @@ class Shape(BaseModel):
     rows: int
     columns: int
 
+class FileRequest(BaseModel):
+    url: str
+    
+
 class ColumnStatistics(BaseModel):
     count: int
     unique: Optional[int] = None
