@@ -9,6 +9,7 @@ from ydata_profiling import ProfileReport
 from autoviz.AutoViz_Class import AutoViz_Class
 import sweetviz as sv
 from app.services.llm_call import call_openai
+import pandas as pd
 
 class AIAutomatedDashboard:
     """
@@ -75,61 +76,5 @@ class AIAutomatedDashboard:
             print("  🧠 ai_insights.txt - AI-generated insights")
 
 
-# ============================================
-# USAGE EXAMPLE
-# ============================================
-from app.core.config import setting
-if __name__ == "__main__":
-
-    # Simple usage
-    # dashboard = AIAutomatedDashboard("weatherHistory.csv")
-    
-    # # Generate everything automatically
-    # dashboard.generate_all(openai_api_key=setting.openai_api_key)  # Optional
-    
-    # Or use individual methods:
-    # method4_sweetviz("your_data.csv")  # Best for quick dashboards
-    # method6_profiling("your_data.csv")  # Best for detailed analysis
-    # method3_autoviz("your_data.csv")   # Best for visualizations
-
-    import pandas as pd
-    from ydata_profiling import ProfileReport
-
-    df = pd.read_csv("weatherHistory.csv")
-    profile = ProfileReport(df, title="Auto Dashboard")
-    profile.to_file("dashboard.html")
-
-
-"""
-============================================
-RECOMMENDATION:
-============================================
-
-🥇 BEST CHOICE: ydata-profiling (Pandas Profiling)
-   - No API key needed
-   - Automatic comprehensive report
-   - Beautiful HTML dashboard
-   - Installation: pip install ydata-profiling
-
-🥈 SECOND BEST: Sweetviz
-   - Very fast
-   - Beautiful visualizations
-   - Easy to use
-   - Installation: pip install sweetviz
-
-🥉 THIRD: AutoViz
-   - Automatic chart generation
-   - Multiple chart types
-   - Installation: pip install autoviz
-
-💡 FOR AI INSIGHTS: PandasAI or OpenAI
-   - Requires API key
-   - Natural language insights
-   - Installation: pip install pandasai openai
-
-============================================
-QUICK START (No API Key Required):
-============================================
-"""
 
 

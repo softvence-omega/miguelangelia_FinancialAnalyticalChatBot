@@ -105,11 +105,16 @@ def ask_me(question: str, thread_id: str , user_id: str):
         {"messages": messages},
         config=config
     )
-    
+    # print("Full response ------------", response)
     # Extract latest AIMessage content
     answer = response['messages'][-1].content
+    total_tokens = response['messages'][-1]['usage_metadata']['total_tokens']
+    input_tokens = response['messages'][-1]['usage_metadata']['input_tokens']
+    output_tokens = response['messages'][-1]['usage_metadata']['output_tokens']
+    model = "gpt-4o-mini"
 
-    return answer
+
+    return answer,total_tokens, input_tokens, output_tokens, model
 
 # -----------------------------
 # 6️⃣ interactive loop example
