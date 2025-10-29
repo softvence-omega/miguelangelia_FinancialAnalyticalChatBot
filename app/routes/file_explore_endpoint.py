@@ -13,7 +13,7 @@ import aiohttp
 from fastapi import Query
 
 # ---------- Route: Structured Report via Cloudinary URL ----------
-@router.post("/report-url", response_model=DataAnalysisResponse)
+@router.post("/file-explore", response_model=DataAnalysisResponse)
 async def generate_report_url(file_url: str = Query(..., description="Cloudinary file URL")):
     try:
         # Download file from URL asynchronously

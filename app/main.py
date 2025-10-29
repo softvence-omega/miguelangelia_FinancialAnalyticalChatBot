@@ -7,6 +7,7 @@ from app.routes.general_bot_endpoint import router as general_bot_router
 from app.routes.thread_creation_endpoint import router as session_router
 from app.routes.summery_endpoint import router as summery_router
 from app.routes.thread_deletion_endpoint import router as thread_deletion_router
+from app.routes.report_generate import router as report_generate_router
 
 from app.core.config import history_collection
 
@@ -29,7 +30,7 @@ app.include_router(financial_bot_router, prefix='/ai')
 app.include_router(general_bot_router, prefix='/ai')
 app.include_router(session_router, prefix='/ai')
 app.include_router(summery_router, prefix='/ai')
-
+app.include_router(report_generate_router, prefix='/ai')
 app.include_router(thread_deletion_router, prefix='/ai')
 
 
