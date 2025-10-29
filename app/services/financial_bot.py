@@ -97,7 +97,7 @@ chatbot = create_chatbot()
 # -----------------------------
 # Create a new thread
 # -----------------------------
-def create_thread(user_id: str, file_summary: str) -> str:
+def create_thread(user_id: str, file_summary: dict) -> str:
     """Creates a new conversation thread and returns thread_id"""
     thread_id = user_id + "_" + str(uuid.uuid4())
     active_threads[thread_id] = create_initial_state(thread_id, file_summary)
@@ -106,7 +106,7 @@ def create_thread(user_id: str, file_summary: str) -> str:
 # -----------------------------
 # Initialize state with thread_id
 # -----------------------------
-def create_initial_state(thread_id: str, file_summary: str):
+def create_initial_state(thread_id: str, file_summary: dict):
     return {
         'message': [HumanMessage(content='Hello!')],
         'file_summary': file_summary,
