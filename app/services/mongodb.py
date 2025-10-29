@@ -1,14 +1,14 @@
+import json
+from bson import json_util
 from pymongo import MongoClient
 from app.core.config import settings
-# Get MongoDB URL
-db_url = settings.db_uri
 
-# Debug check
-print("DB_URL:", db_url)
-
-# Connect to MongoDB Atlas
-client = MongoClient(db_url)
+client = MongoClient(settings.db_uri)
 db = client["miguelangelia"]
-db.create_collection("chat-histories")
-print(db.list_collection_names())
+collection = db["chat-histories"]
+
+for doc in collection.find({"thread_id": "65f0a3a5-6a3a-47e6-853e-b50e1d1ccb34"}):
+    print(json.dumps(doc, indent=4, default=json_util.default))
+
+
 
