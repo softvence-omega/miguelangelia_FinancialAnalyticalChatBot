@@ -1,169 +1,314 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Dict, Any
 import pandas as pd
-import io
-import matplotlib.pyplot as plt
-import base64
-from pandas_profiling import ProfileReport
-from openai import OpenAI
-import os
-from typing import Dict, List, Any
 import numpy as np
+import io
+import json
+import requests
+from openai import AsyncOpenAI
+import os
+from dotenv import load_dotenv
+import asyncio
 
-app = FastAPI(title="Dataset Analyzer with OpenAI Insights")
+# Load environment variables
+load_dotenv()
+
+app = FastAPI(title="Dataset Analysis API (URL Version)")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Set your key in env
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
 
-def encode_plot(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    plt.close(fig)
-    return img_base64
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-def analyze_numeric(col: pd.Series, name: str) -> Dict[str, Any]:
-    if col.nunique() == 0:
-        return {"type": "empty", "plots": []}
-    
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-    
-    # Histogram
-    axes[0].hist(col.dropna(), bins=30, color='skyblue', edgecolor='black')
-    axes[0].set_title(f'{name} - Histogram')
-    
-    # Boxplot
-    axes[1].boxplot(col.dropna(), vert=False)
-    axes[1].set_title(f'{name} - Boxplot')
-    
-    # QQ Plot
-    from scipy import stats
-    stats.probplot(col.dropna(), dist="norm", plot=axes[2])
-    axes[2].set_title(f'{name} - QQ Plot')
-    
-    img = encode_plot(fig)
-    return {
-        "type": "numeric",
-        "stats": {
-            "skewness": float(col.skew()) if not col.empty else None,
-            "kurtosis": float(col.kurtosis()) if not col.empty else None,
-            "original": col.describe().to_dict()
-        },
-        "plots": [f"data:image/png;base64,{img}"]
-    }
+# ---------- Response Models ----------
+class VariableInfo(BaseModel):
+    variable: str
+    types: str
+    missing_count: int
+    missing_percent: float
+    unique_count: int
+    unique_percent: float
 
-def generate_openai_summary(df: pd.DataFrame, profile: ProfileReport) -> str:
-    profile_text = profile.to_json()
-    # Truncate if too long
-    if len(profile_text) > 10000:
-        profile_text = profile_text[:10000] + "..."
+class SkewnessInfo(BaseModel):
+    type: str
+    skewness: float
+    kurtosis: float
 
-    prompt = f"""
-You are a senior data analyst. Analyze this dataset summary and write a concise, professional 'About Report' paragraph (3-5 sentences) like lorem ipsum but meaningful.
+class ChartDataPoint(BaseModel):
+    label: str
+    value: float
 
-Dataset has {len(df)} rows and {len(df.columns)} columns.
-Variables: {', '.join(df.columns)}
+class VisualizationData(BaseModel):
+    title: str
+    visual_type: str
+    chart_data: List[ChartDataPoint]
 
-Summary stats (missing values, types, etc.):
-{profile_text}
+class AnalysisReport(BaseModel):
+    about_report: str
+    dataset_info: str
+    variables: List[VariableInfo]
+    skewness_info: List[SkewnessInfo]
+    visualizations: List[VisualizationData]
 
-Focus on: data quality, key patterns, potential issues, and suitability for analysis.
-Use formal language. Do NOT mention technical tools.
-"""
+# ---------- File Loader ----------
+async def load_from_url(file_url: str) -> pd.DataFrame:
+    """Load CSV or Excel file from Cloudinary or any HTTP URL."""
+    loop = asyncio.get_event_loop()
+
+    def _load():
+        try:
+            response = requests.get(file_url)
+            response.raise_for_status()
+            content = io.BytesIO(response.content)
+
+            if file_url.endswith(".csv"):
+                return pd.read_csv(content)
+            elif file_url.endswith((".xls", ".xlsx")):
+                return pd.read_excel(content)
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported file format. Use CSV or Excel.")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error loading file: {str(e)}")
+
+    return await loop.run_in_executor(None, _load)
+
+# ---------- Dataset Analysis ----------
+async def analyze_dataset(df: pd.DataFrame) -> Dict[str, Any]:
+    loop = asyncio.get_event_loop()
+
+    def _analyze():
+        analysis = {
+            'shape': df.shape,
+            'columns': df.columns.tolist(),
+            'dtypes': df.dtypes.astype(str).to_dict(),
+            'missing': df.isnull().sum().to_dict(),
+            'missing_percent': (df.isnull().sum() / len(df) * 100).to_dict(),
+            'unique_counts': df.nunique().to_dict(),
+            'numeric_summary': df.describe().to_dict() if len(df.select_dtypes(include=[np.number]).columns) > 0 else {},
+        }
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            analysis['skewness'] = df[numeric_cols].skew().to_dict()
+            analysis['kurtosis'] = df[numeric_cols].kurtosis().to_dict()
+
+        return analysis
+
+    return await loop.run_in_executor(None, _analyze)
+
+# ---------- Visualization Generation ----------
+async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
+    loop = asyncio.get_event_loop()
+
+    def _generate():
+        visualizations = []
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+
+        # Detect date-like object columns
+        for col in df.select_dtypes(include=['object']).columns:
+            try:
+                result = pd.to_datetime(df[col].head(10), errors='coerce', format='mixed')
+                if result.notna().sum() >= 5:
+                    date_cols.append(col)
+            except Exception:
+                pass
+
+        # Numeric visualizations
+        for idx, col in enumerate(numeric_cols[:3]):
+            data = df[col].dropna()
+            if len(data) == 0:
+                continue
+
+            unique_count = data.nunique()
+            data_length = len(data)
+
+            if date_cols and idx == 0:
+                date_col = date_cols[0]
+                temp_df = df[[date_col, col]].dropna().sort_values(date_col)
+                if len(temp_df) > 50:
+                    step = len(temp_df) // 50
+                    temp_df = temp_df.iloc[::step]
+
+                chart_data = [
+                    ChartDataPoint(label=str(row[date_col]).split("T")[0], value=float(row[col]))
+                    for _, row in temp_df.iterrows()
+                ]
+                visualizations.append(VisualizationData(title=f"{col} Over Time", visual_type="Line Chart", chart_data=chart_data))
+
+            elif unique_count <= 10 and unique_count < data_length * 0.1:
+                value_counts = data.value_counts().sort_index().head(10)
+                chart_data = [ChartDataPoint(label=str(l), value=float(v)) for l, v in value_counts.items()]
+                visualizations.append(VisualizationData(title=f"Distribution of {col}", visual_type="Bar Chart", chart_data=chart_data))
+            else:
+                hist, bins = np.histogram(data, bins=15)
+                chart_data = [ChartDataPoint(label=f"{bins[i]:.2f}-{bins[i+1]:.2f}", value=float(hist[i])) for i in range(len(hist))]
+                visualizations.append(VisualizationData(title=f"Distribution of {col}", visual_type="Histogram", chart_data=chart_data))
+
+        # Add categorical visualizations if less than 3 total
+        if len(visualizations) < 3:
+            categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+            for col in categorical_cols:
+                if len(visualizations) >= 3:
+                    break
+                value_counts = df[col].value_counts().head(10)
+                if len(value_counts) > 1:
+                    chart_data = [ChartDataPoint(label=str(l), value=float(v)) for l, v in value_counts.items()]
+                    visualizations.append(VisualizationData(title=f"Top Categories in {col}", visual_type="Bar Chart", chart_data=chart_data))
+        return visualizations
+
+    return await loop.run_in_executor(None, _generate)
+
+# ---------- AI Insights ----------
+async def get_ai_insights(analysis: Dict[str, Any], df: pd.DataFrame) -> Dict[str, str]:
+    context = f"""
+    Dataset Analysis Summary:
+    - Shape: {analysis['shape'][0]} rows, {analysis['shape'][1]} columns
+    - Columns: {', '.join(analysis['columns'])}
+    - Data Types: {json.dumps(analysis['dtypes'], indent=2)}
+    - Missing Values: {json.dumps(analysis['missing'], indent=2)}
+    Sample Data (first 5 rows):
+    {df.head().to_string()}
+    Numeric Summary Statistics:
+    {json.dumps(analysis.get('numeric_summary', {}), indent=2)}
+    """
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=300
+            messages=[
+                {"role": "system", "content": "You are a data analyst expert. Provide concise dataset insights."},
+                {"role": "user", "content": f"{context}\n\nProvide 1) about_report, 2) dataset_info in JSON format."}
+            ],
+            temperature=0.7,
+            max_tokens=500
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        return json.loads(content)
+    except Exception:
+        return {
+            "about_report": "Comprehensive dataset analysis including structure, quality, and statistics.",
+            "dataset_info": f"Dataset has {analysis['shape'][0]} rows and {analysis['shape'][1]} columns."
+        }
+
+# ---------- Helper Data Builders ----------
+async def prepare_variables(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[VariableInfo]:
+    loop = asyncio.get_event_loop()
+
+    def _prepare():
+        vars_info = []
+        for col in df.columns:
+            dtype = str(df[col].dtype)
+            if dtype.startswith('int') or dtype.startswith('float'):
+                var_type = 'numeric'
+            elif dtype == 'object':
+                unique_ratio = df[col].nunique() / len(df)
+                var_type = 'factor' if unique_ratio < 0.5 else 'character'
+            elif dtype == 'bool':
+                var_type = 'logical'
+            else:
+                var_type = dtype
+
+            miss = int(analysis['missing'][col])
+            miss_pct = float(analysis['missing_percent'][col])
+            uniq = int(analysis['unique_counts'][col])
+            uniq_pct = float(uniq / len(df) * 100) if len(df) > 0 else 0
+
+            vars_info.append(VariableInfo(
+                variable=col,
+                types=var_type,
+                missing_count=miss,
+                missing_percent=round(miss_pct, 1),
+                unique_count=uniq,
+                unique_percent=round(uniq_pct, 2)
+            ))
+        return vars_info
+
+    return await loop.run_in_executor(None, _prepare)
+
+async def prepare_skewness(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[SkewnessInfo]:
+    loop = asyncio.get_event_loop()
+
+    def _prepare():
+        skews = []
+        if 'skewness' not in analysis:
+            return skews
+        skews.append(SkewnessInfo(
+            type="original",
+            skewness=round(float(np.mean(list(analysis['skewness'].values()))), 4),
+            kurtosis=round(float(np.mean(list(analysis['kurtosis'].values()))), 4)
+        ))
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) == 0:
+            return skews
+
+        positive_data = df[numeric_cols].apply(lambda x: x[x > 0])
+        if not positive_data.empty:
+            log_skew = positive_data.apply(lambda x: np.log(x).skew()).mean()
+            log_kurt = positive_data.apply(lambda x: np.log(x).kurtosis()).mean()
+            skews.append(SkewnessInfo(type="log transform", skewness=round(float(log_skew), 4), kurtosis=round(float(log_kurt), 4)))
+
+        sqrt_data = df[numeric_cols].apply(lambda x: np.sqrt(x[x >= 0]))
+        if not sqrt_data.empty:
+            sqrt_skew = sqrt_data.apply(lambda x: x.skew()).mean()
+            sqrt_kurt = sqrt_data.apply(lambda x: x.kurtosis()).mean()
+            skews.append(SkewnessInfo(type="sqrt transform", skewness=round(float(sqrt_skew), 4), kurtosis=round(float(sqrt_kurt), 4)))
+
+        return skews
+
+    return await loop.run_in_executor(None, _prepare)
+
+# ---------- API Endpoint ----------
+@app.post("/analyze", response_model=AnalysisReport)
+async def analyze_url(file_url: str = Query(..., description="Public Cloudinary or HTTP file URL")):
+    try:
+        df = await load_from_url(file_url)
+        analysis = await analyze_dataset(df)
+
+        insights_task = get_ai_insights(analysis, df)
+        variables_task = prepare_variables(df, analysis)
+        skew_task = prepare_skewness(df, analysis)
+        visuals_task = generate_visualizations(df)
+
+        insights, variables, skew_info, visuals = await asyncio.gather(
+            insights_task, variables_task, skew_task, visuals_task
+        )
+
+        return AnalysisReport(
+            about_report=insights['about_report'],
+            dataset_info=insights['dataset_info'],
+            variables=variables,
+            skewness_info=skew_info,
+            visualizations=visuals
+        )
+
     except Exception as e:
-        return f"Error generating summary: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
 
-@app.post("/analyze")
-async def analyze_dataset(file: UploadFile = File(...)):
-    if file.content_type not in [
-        "text/csv",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    ]:
-        raise HTTPException(400, detail="Invalid file type. Upload CSV or Excel.")
-
-    content = await file.read()
-    if file.filename.endswith(".csv"):
-        df = pd.read_csv(io.BytesIO(content))
-    else:
-        df = pd.read_excel(io.BytesIO(content))
-
-    if df.empty:
-        raise HTTPException(400, detail="Empty dataset.")
-
-    # Generate profile
-    profile = ProfileReport(df, minimal=True, title="Dataset Report", explorative=True)
-    
-    # OpenAI Summary
-    about_report = generate_openai_summary(df, profile)
-
-    # Variable Info
-    var_info = []
-    for col in df.columns:
-        col_data = df[col]
-        missing_count = col_data.isna().sum()
-        missing_percent = round(missing_count / len(df) * 100, 2)
-        unique_count = col_data.nunique()
-        unique_percent = round(unique_count / len(df) * 100, 2) if len(df) > 0 else 0
-
-        var_type = "unknown"
-        if pd.api.types.is_numeric_dtype(col_data):
-            var_type = "numeric"
-        elif pd.api.types.is_bool_dtype(col_data):
-            var_type = "logical"
-        elif pd.api.types.is_categorical_dtype(col_data) or col_data.dtype == 'category':
-            var_type = "factor"
-        elif pd.api.types.is_string_dtype(col_data):
-            var_type = "character"
-
-        var_info.append({
-            "variable": col,
-            "type": var_type,
-            "missing_count": int(missing_count),
-            "missing_percent": missing_percent,
-            "unique_count": int(unique_count),
-            "unique_percent": unique_percent
-        })
-
-    # Distribution Stats for Numeric Columns
-    dist_stats = []
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        skewness = df[col].skew()
-        kurtosis = df[col].kurtosis()
-        dist_stats.append({
-            "variable": col,
-            "skewness": round(skewness, 4) if not pd.isna(skewness) else None,
-            "kurtosis": round(kurtosis, 4) if not pd.isna(kurtosis) else None
-        })
-
-    # Generate Visuals (only for numeric, limit to 3)
-    visuals = []
-    for i, col in enumerate(numeric_cols[:3]):
-        result = analyze_numeric(df[col], col)
-        if result["type"] == "numeric":
-            visuals.extend(result["plots"])
-
-    # Final Report
-    report = {
-        "about_report": about_report,
-        "dataset_info": {
-            "rows": len(df),
-            "columns": len(df.columns),
-            "size_mb": round(len(content) / (1024*1024), 2)
+@app.get("/")
+async def root():
+    return {
+        "message": "Dataset Analysis API (URL-based)",
+        "example": {
+            "POST /analyze?file_url=https://res.cloudinary.com/.../apple_stock_data.csv": "Analyze dataset from Cloudinary link"
         },
-        "information_of_variables": var_info,
-        "distribution_stats": dist_stats,
-        "visuals": visuals[:3]  # Limit to 3 images
+        "status": "API Key Loaded" if OPENAI_API_KEY else "API Key Missing"
     }
 
-    return JSONResponse(content=report)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
