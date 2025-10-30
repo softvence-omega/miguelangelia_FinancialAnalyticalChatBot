@@ -1,39 +1,28 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 import pandas as pd
 import numpy as np
 import io
 import json
 import requests
-from openai import AsyncOpenAI
-import os
-from dotenv import load_dotenv
 import asyncio
-
-# Load environment variables
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+import os
+from app.core.config import settings
+# -------------------- Setup -------------------- #
 load_dotenv()
+app = FastAPI(title="Dataset Analysis API")
+router = APIRouter(prefix="/api", tags=["Report"])
 
-app = FastAPI(title="Dataset Analysis API (URL Version)")
+client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Initialize OpenAI client
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY not found in environment variables")
+# -------------------- Schemas -------------------- #
+class FileInput(BaseModel):
+    file_url: str
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-
-# ---------- Response Models ----------
 class VariableInfo(BaseModel):
     variable: str
     types: str
@@ -63,9 +52,9 @@ class AnalysisReport(BaseModel):
     skewness_info: List[SkewnessInfo]
     visualizations: List[VisualizationData]
 
-# ---------- File Loader ----------
+
+# -------------------- File Loader -------------------- #
 async def load_from_url(file_url: str) -> pd.DataFrame:
-    """Load CSV or Excel file from Cloudinary or any HTTP URL."""
     loop = asyncio.get_event_loop()
 
     def _load():
@@ -85,7 +74,8 @@ async def load_from_url(file_url: str) -> pd.DataFrame:
 
     return await loop.run_in_executor(None, _load)
 
-# ---------- Dataset Analysis ----------
+
+# -------------------- Dataset Analysis -------------------- #
 async def analyze_dataset(df: pd.DataFrame) -> Dict[str, Any]:
     loop = asyncio.get_event_loop()
 
@@ -109,7 +99,8 @@ async def analyze_dataset(df: pd.DataFrame) -> Dict[str, Any]:
 
     return await loop.run_in_executor(None, _analyze)
 
-# ---------- Visualization Generation ----------
+
+# -------------------- Visualization Generation -------------------- #
 async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
     loop = asyncio.get_event_loop()
 
@@ -118,7 +109,6 @@ async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
 
-        # Detect date-like object columns
         for col in df.select_dtypes(include=['object']).columns:
             try:
                 result = pd.to_datetime(df[col].head(10), errors='coerce', format='mixed')
@@ -127,7 +117,6 @@ async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
             except Exception:
                 pass
 
-        # Numeric visualizations
         for idx, col in enumerate(numeric_cols[:3]):
             data = df[col].dropna()
             if len(data) == 0:
@@ -158,7 +147,6 @@ async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
                 chart_data = [ChartDataPoint(label=f"{bins[i]:.2f}-{bins[i+1]:.2f}", value=float(hist[i])) for i in range(len(hist))]
                 visualizations.append(VisualizationData(title=f"Distribution of {col}", visual_type="Histogram", chart_data=chart_data))
 
-        # Add categorical visualizations if less than 3 total
         if len(visualizations) < 3:
             categorical_cols = df.select_dtypes(include=['object', 'category']).columns
             for col in categorical_cols:
@@ -168,11 +156,13 @@ async def generate_visualizations(df: pd.DataFrame) -> List[VisualizationData]:
                 if len(value_counts) > 1:
                     chart_data = [ChartDataPoint(label=str(l), value=float(v)) for l, v in value_counts.items()]
                     visualizations.append(VisualizationData(title=f"Top Categories in {col}", visual_type="Bar Chart", chart_data=chart_data))
+
         return visualizations
 
     return await loop.run_in_executor(None, _generate)
 
-# ---------- AI Insights ----------
+
+# -------------------- AI Insights -------------------- #
 async def get_ai_insights(analysis: Dict[str, Any], df: pd.DataFrame) -> Dict[str, str]:
     context = f"""
     Dataset Analysis Summary:
@@ -204,7 +194,8 @@ async def get_ai_insights(analysis: Dict[str, Any], df: pd.DataFrame) -> Dict[st
             "dataset_info": f"Dataset has {analysis['shape'][0]} rows and {analysis['shape'][1]} columns."
         }
 
-# ---------- Helper Data Builders ----------
+
+# -------------------- Helpers -------------------- #
 async def prepare_variables(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[VariableInfo]:
     loop = asyncio.get_event_loop()
 
@@ -239,6 +230,7 @@ async def prepare_variables(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[
 
     return await loop.run_in_executor(None, _prepare)
 
+
 async def prepare_skewness(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[SkewnessInfo]:
     loop = asyncio.get_event_loop()
 
@@ -272,11 +264,12 @@ async def prepare_skewness(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[S
 
     return await loop.run_in_executor(None, _prepare)
 
-# ---------- API Endpoint ----------
-@app.post("/analyze", response_model=AnalysisReport)
-async def analyze_url(file_url: str = Query(..., description="Public Cloudinary or HTTP file URL")):
+
+# -------------------- API Endpoint -------------------- #
+@router.post("/generate-report", response_model=AnalysisReport)
+async def analyze_file(input_data: FileInput):
     try:
-        df = await load_from_url(file_url)
+        df = await load_from_url(input_data.file_url)
         analysis = await analyze_dataset(df)
 
         insights_task = get_ai_insights(analysis, df)
@@ -295,20 +288,9 @@ async def analyze_url(file_url: str = Query(..., description="Public Cloudinary 
             skewness_info=skew_info,
             visualizations=visuals
         )
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Dataset Analysis API (URL-based)",
-        "example": {
-            "POST /analyze?file_url=https://res.cloudinary.com/.../apple_stock_data.csv": "Analyze dataset from Cloudinary link"
-        },
-        "status": "API Key Loaded" if OPENAI_API_KEY else "API Key Missing"
-    }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# -------------------- Mount Router -------------------- #
+app.include_router(router)

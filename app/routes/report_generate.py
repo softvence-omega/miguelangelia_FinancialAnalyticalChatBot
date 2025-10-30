@@ -1,15 +1,15 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.services.report_service import load_from_url, analyze_dataset, get_ai_insights, prepare_variables, prepare_skewness, generate_visualizations
-from app.schemas.report_schema import AnalysisReport
+from app.schemas.report_schema import AnalysisReport, FileInput
 import asyncio
 
 
 router = APIRouter()
 
 @router.post("/generate-report", response_model=AnalysisReport)
-async def analyze_url(file_url: str = Query(..., description="Public Cloudinary or HTTP file URL")):
+async def analyze_file(input_data: FileInput):
     try:
-        df = await load_from_url(file_url)
+        df = await load_from_url(input_data.file_url)
         analysis = await analyze_dataset(df)
 
         insights_task = get_ai_insights(analysis, df)

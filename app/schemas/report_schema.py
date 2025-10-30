@@ -3,6 +3,9 @@ from pydantic import BaseModel
 
 
 # ---------- Response Models ----------
+class FileInput(BaseModel):
+    file_url: str
+
 class VariableInfo(BaseModel):
     variable: str
     types: str
