@@ -157,13 +157,19 @@ def process_user_input(thread_id: str, user_input: str):
     # If file context exists → analytical mode
     if state.get("file_summary"):
         context_prompt = f"""
-        You are a financial data analyst.
-        Use the following information to answer the question.
+        You are Analytic, an intelligent assistant that analyzes structured data and reports.
+        You will receive context in JSON format, which could include dashboard metrics, report summaries, or dataset insights.
 
-        Information:
+        Your task:
+        - Understand and reason deeply about the context.
+        - Answer the user question with clear insights, explanations, or recommendations.
+        - You may perform calculations or compare values if relevant.
+        - Think step by step, and make it easy for the user to understand.
+
+        Context JSON:
         {state['file_summary']}
 
-        Question:
+        User question:
         {user_input}
         """
         state['message'].append(HumanMessage(content=context_prompt))

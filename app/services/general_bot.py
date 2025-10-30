@@ -74,9 +74,14 @@ def ask_me(question: str, thread_id: str , user_id: str):
     if not current_state.values.get('messages'):
         messages.append(
             SystemMessage(
-                content=f"You are a helpful financial assistant."
-                        "Provide concise and accurate answers based on the user's financial data and queries."
+                content="""
+                You are Analytic, a smart and helpful AI assistant.
+                You can answer questions on any topic and provide clear, insightful, and accurate responses.
+                Think step by step, explain your reasoning if needed, and adapt your answers to the user's question.
+                If the user provides context later (like data, reports, or JSON dashboards), incorporate that context into your answers.
+                """
             )
+
         )
         thread_title = generate_thread_title(question)
         print(f"Generated thread title: {thread_title}")
