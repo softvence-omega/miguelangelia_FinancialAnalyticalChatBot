@@ -9,7 +9,7 @@ import asyncio
 from app.schemas.report_schema import AnalysisReport, VariableInfo, SkewnessInfo, VisualizationData, ChartDataPoint
 from app.core.config import settings
 from openai import AsyncOpenAI
-
+import math
 
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -221,3 +221,17 @@ async def prepare_skewness(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[S
         return skews
 
     return await loop.run_in_executor(None, _prepare)
+
+
+# -------------------- NaN / Inf Sanitizer -------------------- #
+def sanitize_json(obj):
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_json(v) for v in obj]
+    else:
+        return obj

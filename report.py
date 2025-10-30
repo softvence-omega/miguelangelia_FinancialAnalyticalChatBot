@@ -10,7 +10,9 @@ import asyncio
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
+import math
 from app.core.config import settings
+
 # -------------------- Setup -------------------- #
 load_dotenv()
 app = FastAPI(title="Dataset Analysis API")
@@ -23,6 +25,7 @@ client = AsyncOpenAI(api_key=settings.openai_api_key)
 class FileInput(BaseModel):
     file_url: str
 
+
 class VariableInfo(BaseModel):
     variable: str
     types: str
@@ -31,19 +34,23 @@ class VariableInfo(BaseModel):
     unique_count: int
     unique_percent: float
 
+
 class SkewnessInfo(BaseModel):
     type: str
     skewness: float
     kurtosis: float
 
+
 class ChartDataPoint(BaseModel):
     label: str
     value: float
+
 
 class VisualizationData(BaseModel):
     title: str
     visual_type: str
     chart_data: List[ChartDataPoint]
+
 
 class AnalysisReport(BaseModel):
     about_report: str
@@ -265,6 +272,20 @@ async def prepare_skewness(df: pd.DataFrame, analysis: Dict[str, Any]) -> List[S
     return await loop.run_in_executor(None, _prepare)
 
 
+# -------------------- NaN / Inf Sanitizer -------------------- #
+def sanitize_json(obj):
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_json(v) for v in obj]
+    else:
+        return obj
+
+
 # -------------------- API Endpoint -------------------- #
 @router.post("/generate-report", response_model=AnalysisReport)
 async def analyze_file(input_data: FileInput):
@@ -281,13 +302,15 @@ async def analyze_file(input_data: FileInput):
             insights_task, variables_task, skew_task, visuals_task
         )
 
-        return AnalysisReport(
+        result = AnalysisReport(
             about_report=insights['about_report'],
             dataset_info=insights['dataset_info'],
             variables=variables,
             skewness_info=skew_info,
             visualizations=visuals
         )
+        return sanitize_json(result.dict())
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
 

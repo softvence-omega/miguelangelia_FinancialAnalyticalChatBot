@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.services.report_service import load_from_url, analyze_dataset, get_ai_insights, prepare_variables, prepare_skewness, generate_visualizations
+from app.services.report_service import load_from_url, analyze_dataset, get_ai_insights, prepare_variables, prepare_skewness, generate_visualizations, sanitize_json
 from app.schemas.report_schema import AnalysisReport, FileInput
 import asyncio
 
@@ -21,13 +21,14 @@ async def analyze_file(input_data: FileInput):
             insights_task, variables_task, skew_task, visuals_task
         )
 
-        return AnalysisReport(
+        result = AnalysisReport(
             about_report=insights['about_report'],
             dataset_info=insights['dataset_info'],
             variables=variables,
             skewness_info=skew_info,
             visualizations=visuals
         )
+        return sanitize_json(result.dict())
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
