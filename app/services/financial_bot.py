@@ -69,7 +69,8 @@ def chat_node(state: ChatState):
     else:
         messages_with_context = messages
 
-    response = llm(messages_with_context)
+    # Fix: Use .invoke() instead of calling llm directly
+    response = llm.invoke(messages_with_context)
     state['message'].append(AIMessage(content=response.content))
     return {
         'message': state['message'], 
