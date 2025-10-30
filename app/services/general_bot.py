@@ -105,12 +105,14 @@ def ask_me(question: str, thread_id: str , user_id: str):
         {"messages": messages},
         config=config
     )
-    # print("Full response ------------", response)
-    # Extract latest AIMessage content
-    answer = response['messages'][-1].content
-    total_tokens = response['messages'][-1]['usage_metadata']['total_tokens']
-    input_tokens = response['messages'][-1]['usage_metadata']['input_tokens']
-    output_tokens = response['messages'][-1]['usage_metadata']['output_tokens']
+    print("Full response ------------", response)
+    
+    ai_message = response['messages'][-1]
+    answer = ai_message.content
+    usage_metadata = getattr(ai_message, 'usage_metadata', {})
+    total_tokens = usage_metadata.get('total_tokens', 0)
+    input_tokens = usage_metadata.get('input_tokens', 0)
+    output_tokens = usage_metadata.get('output_tokens', 0)
     model = "gpt-4o-mini"
 
 
