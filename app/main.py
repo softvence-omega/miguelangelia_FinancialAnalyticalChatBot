@@ -1,14 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.file_explore_endpoint import router as explore_router
-# from app.routes.summary_and_report_generator_endpoint import router as summary_report_router
 from app.routes.financial_bot_endpoint import router as financial_bot_router
 from app.routes.general_bot_endpoint import router as general_bot_router
 from app.routes.thread_creation_endpoint import router as session_router
 from app.routes.summery_endpoint import router as summery_router
 from app.routes.thread_deletion_endpoint import router as thread_deletion_router
-
-from app.core.config import history_collection
+from app.routes.report_generate import router as report_generate_router
+from app.routes.generate_dashboard import router as generate_dashboard_router
 
 app = FastAPI(title="Financial Analyst AI API")
 
@@ -24,13 +23,13 @@ app.add_middleware(
 )
 
 app.include_router(explore_router, prefix='/ai')
-# app.include_router(summary_report_router, prefix='/ai')
 app.include_router(financial_bot_router, prefix='/ai')
 app.include_router(general_bot_router, prefix='/ai')
 app.include_router(session_router, prefix='/ai')
 app.include_router(summery_router, prefix='/ai')
-
+app.include_router(report_generate_router, prefix='/ai')
 app.include_router(thread_deletion_router, prefix='/ai')
+app.include_router(generate_dashboard_router, prefix='/ai')
 
 
 @app.get("/")
