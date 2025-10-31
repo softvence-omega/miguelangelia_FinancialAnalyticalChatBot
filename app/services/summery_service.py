@@ -28,8 +28,8 @@ async def summarize_dataset(df: pd.DataFrame) -> str:
     df_clean = await asyncio.to_thread(lambda: df.fillna("").head(100).to_dict(orient="records"))
     
     prompt = (
-        f"Analyze this dataset and provide a summary in 6-10 sentences. "
-        f"Include insights, patterns, and potential issues. Do not exceed 10 sentences:\n"
+        f"Analyze this dataset and provide a summary in 4-5 sentences. "
+        f"Include insights, patterns, and potential issues. Do not exceed 8 sentences:\n"
         f"{json.dumps(df_clean)}"
     )
     
