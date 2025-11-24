@@ -75,6 +75,7 @@ class MongoSaver(BaseCheckpointSaver):
         
         # Create document to store
         document = {
+            "doc_type": "checkpoint",  # ✅ Add this
             "thread_id": thread_id,
             "user_id": user_id,
             "checkpoint_ns": checkpoint_ns,
@@ -126,6 +127,7 @@ class MongoSaver(BaseCheckpointSaver):
         
         # Create document to store writes
         document = {
+            "doc_type": "writes",  # ✅ Add this
             "thread_id": thread_id,
             "checkpoint_ns": checkpoint_ns,
             "checkpoint_id": checkpoint_id,
@@ -154,6 +156,7 @@ class MongoSaver(BaseCheckpointSaver):
 
         # Build query
         query = {
+            "doc_type": "checkpoint",  # ✅ Add this filter
             "thread_id": thread_id,
             "checkpoint_ns": checkpoint_ns,
         }
@@ -241,7 +244,9 @@ class MongoSaver(BaseCheckpointSaver):
         Yields:
             CheckpointTuple objects
         """
-        query = {}
+        query = {
+            "doc_type": "checkpoint"  # ✅ Add this filter
+        }
         
         if config:
             thread_id = config.get("configurable", {}).get("thread_id")
